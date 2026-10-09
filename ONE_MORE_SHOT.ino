@@ -1,0 +1,122 @@
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SH110X.h>
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_RESET    -1
+
+Adafruit_SH1106G display = Adafruit_SH1106G(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+struct TextFrame {
+  const char* text;
+  unsigned int delayMs;
+  bool isInverted;
+};
+
+TextFrame sequence[] = {
+  {"One",       800,  false},
+  {"More",      800,  true},
+  {"Shot",      800,  false},
+  {"Cause",     800,  true},
+  {"I feel",    500,  false},
+  {"like",      500,  false},
+  {"you're",    400,  false},
+  {"up",        400,  false},
+  {"to",        400,  false},
+  {"something", 800,  true},
+  {"fuck",      500,  false},
+  {"that",      500,  false},
+  {"you're",    400,  false},
+  {"up",        400,  false},
+  {"to",        400,  false},
+  {"something", 800,  true},
+  {"something", 1000, false}
+};
+
+const int sequenceLength = sizeof(sequence) / sizeof(sequence[0]);
+
+const int CX = SCREEN_WIDTH / 2;
+const int CY = SCREEN_HEIGHT / 2;
+
+// Draws a clean, solid 5-pointed star
+void drawSolidStar(int16_t cx, int16_t cy, int16_t outerR, float angleRad) {
+  int16_t innerR = outerR / 2;
+  int16_t x[10], y[10];
+
+  for (int i = 0; i < 10; i++) {
+    float a = angleRad + (i * 36.0 * 0.01745329);
+    int16_t r = (i % 2 == 0) ? outerR : innerR;
+    x[i] = cx + cos(a) * r;
+    y[i] = cy + sin(a) * r;
+  }
+
+  for (int i = 0; i < 10; i++) {
+    int next = (i + 1) % 10;
+    display.fillTriangle(cx, cy, x[i], y[i], x[next], y[next], SH110X_WHITE);
+  }
+}
+
+void setup() {
+  display.begin(0x3C, true);
+  display.clearDisplay();
+  display.display();
+}
+
+void loop() {
+  int currentFrameIdx = 0;
+  unsigned long frameStartTime = millis();
+  
+  float starAngle = 0.0;
+  float scaleAngle = 0.0;
+
+  while (currentFrameIdx < sequenceLength) {
+    unsigned long currentMillis = millis();
+
+    if (currentMillis - frameStartTime >= sequence[currentFrameIdx].delayMs) {
+      currentFrameIdx++;
+      frameStartTime = currentMillis;
+      if (currentFrameIdx >= sequenceLength) break;
+    }
+
+    TextFrame currentFrame = sequence[currentFrameIdx];
+
+    display.invertDisplay(currentFrame.isInverted);
+    display.clearDisplay();
+
+    // Smooth continuous rotation
+    starAngle += 0.07;
+    if (starAngle >= 6.28318) starAngle = 0.0;
+
+    // Smooth breathing size modulation (small to big and back)
+    scaleAngle += 0.08;
+    if (scaleAngle >= 6.28318) scaleAngle = 0.0;
+
+    // Outer radius grows smoothly between 16px and 52px
+    int16_t currentRadius = 16 + (int16_t)((sin(scaleAngle) + 1.0) / 2.0 * 36.0);
+
+    // 1. Draw central solid star
+    drawSolidStar(CX, CY, currentRadius, starAngle);
+
+    // 2. Render centered text with XOR auto-inversion directly over the star
+    display.setTextSize(2);
+    display.setTextColor(SH110X_INVERSE);
+
+    int16_t x1, y1;
+    uint16_t w, h;
+    display.getTextBounds(currentFrame.text, 0, 0, &x1, &y1, &w, &h);
+
+    int cursorX = (SCREEN_WIDTH - w) / 2;
+    int cursorY = (SCREEN_HEIGHT - h) / 2;
+
+    display.setCursor(cursorX, cursorY);
+    display.print(currentFrame.text);
+
+    display.display();
+  }
+
+  display.invertDisplay(false);
+  display.clearDisplay();
+  display.display();
+  delay(2000);
+}
